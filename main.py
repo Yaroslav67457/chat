@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from collections import deque
 from datetime import datetime
 import socketio
@@ -9,8 +8,10 @@ import json
 import tempfile
 import unicodedata
 
+# History persistence can be disabled on hosts without persistent storage.
+write_history = os.environ.get("WRITE_HISTORY", "false").lower() in ("1", "true", "yes", "on")
+
 app = FastAPI(title="Python Chat")
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -312,8 +313,9 @@ def save_whisper_history():
                 pass
 
 
-load_history()
-load_whisper_history()
+if write_history:
+    load_history()
+    load_whisper_history()
 
 
 def get_history_for_nick(nick):
@@ -438,7 +440,8 @@ async def handle_message(sid, data):
         "timestamp": current_timestamp(),
     }
     messages.append(msg)
-    save_history()
+    if write_history:
+        save_history()
     try:
         await sio.emit("new_message", msg)
     except Exception as e:
@@ -491,7 +494,8 @@ async def handle_edit_message(sid, data):
     msg["text"] = new_text
     msg["edited"] = True
     msg["timestamp"] = current_timestamp()
-    save_history()
+    if write_history:
+        save_history()
     print(
         f"[EDIT] sid={sid} id={msg_id} "
         f"old_text_length={len(old_text)} new_text_length={len(new_text)}"
@@ -552,7 +556,8 @@ async def handle_whisper(sid, data):
         "timestamp": current_timestamp(),
     }
     whisper_history.append(msg)
-    save_whisper_history()
+    if write_history:
+        save_whisper_history()
     print(
         f"[WHISPER] sid={sid} target_sid={target_sid} "
         f"text_length={len(text)} has_image={bool(image)}"
